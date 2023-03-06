@@ -1,0 +1,23 @@
+Special tokens have been added in the vocabulary, make sure the associated word embedding are fine-tuned or trained.
+  0%|          | 0/24 [00:00<?, ?it/s]  0%|          | 0/24 [00:00<?, ?it/s]
+hyper-parameter configurations:
+{'gpu': 0, 'dataname': 'TACRED', 'task_name': 'TACRED', 'max_length': 256, 'this_name': 'continual', 'device': device(type='cuda'), 'batch_size': 40, 'learning_rate': 5e-06, 'total_round': 5, 'rel_per_task': 4, 'pattern': 'entity_marker', 'encoder_output_size': 768, 'vocab_size': 30522, 'marker_size': 4, 'temp': 0.1, 'feat_dim': 64, 'kl_temp': 10, 'num_workers': 0, 'step1_epochs': 10, 'step2_epochs': 10, 'seed': 2021, 'max_grad_norm': 10, 'num_protos': 20, 'optim': 'adam', 'data_path': 'datasets/', 'bert_path': '/home/v-chengweihu/code/bert-base-uncased', 'n_gpu': 1}
+['per:cities_of_residence', 'per:other_family', 'org:founded', 'per:origin']
+Traceback (most recent call last):
+  File "run_continual.py", line 22, in <module>
+    run(args)
+  File "run_continual.py", line 11, in run
+    manager.train(args)
+  File "/home/v-chengweihu/code/CRL-change/methods/manager.py", line 343, in train
+    self.moment.init_moment(args, encoder, train_data_for_initial, is_memory=False)
+  File "/anaconda/envs/exp/lib/python3.8/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/v-chengweihu/code/CRL-change/methods/utils.py", line 54, in init_moment
+    _, reps = encoder.bert_forward(tokens)
+  File "/home/v-chengweihu/code/CRL-change/methods/model.py", line 19, in bert_forward
+    out = self.encoder(x)
+  File "/anaconda/envs/exp/lib/python3.8/site-packages/torch/nn/modules/module.py", line 889, in _call_impl
+    result = self.forward(*input, **kwargs)
+  File "/home/v-chengweihu/code/CRL-change/methods/backbone.py", line 60, in forward
+    instance_output = torch.index_select(tokens_output, 0, torch.tensor(i).cuda())
+KeyboardInterrupt
