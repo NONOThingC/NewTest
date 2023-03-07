@@ -14,6 +14,7 @@ from .utils import osdist
 from .retrieve_module import RetrievePool
 import itertools
 import copy
+import collections
 class Manager(object):
     def __init__(self, args):
         super().__init__()
@@ -324,7 +325,7 @@ class Manager(object):
             # load data and start computation
             
             history_relation = []
-            proto4repaly = []
+            proto4repaly = {}
             
             retrieval_pool=RetrievePool()
             all_data_for_pool={}
@@ -353,19 +354,27 @@ class Manager(object):
                     # 
                     retrieval_pool.reset_index()
                     train_data_for_memory = []
+                    # 重建所有index
                     for i,relation in enumerate(history_relation):
                         all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
                         retrieval_pool.add_to_retrieve_pool(all_current_embeddings,class_label=relation,ids=indss) # K*hidden
-                    for i,relation in enumerate(history_relation):
+                    # 检索对应proto的index
+                    retrival_res=collections.defaultdict(list)
+                    for relation in history_relation:
                         if relation not in current_relations:
                             cur_rel_data=all_data_for_pool[relation]
-                            ret_inds=retrieval_pool.retrieval_error_index(proto4repaly[i],args.num_protos,relation)
-                            memorized_samples[relation]=[cur_rel_data[min(k,len(cur_rel_data)-1)] for k in ret_inds]
+                            retrieval_pool.retrieval_error_index(proto4repaly[relation],1,relation,retrival_res)
+                    #拿到对应的例子
+                    for relation in history_relation:
+                        if relation not in current_relations:
+                            cur_rel_data=all_data_for_pool[relation]
+                            memorized_samples[relation]=[cur_rel_data[k] for k in retrival_res[relation]]
                             train_data_for_memory += memorized_samples[relation]
+                        #torch.cat(list(proto4repaly.values()),dim=0).to(args.device)
                         
                     
                     self.moment.init_moment(args, encoder, train_data_for_memory, is_memory=True)
-                    self.train_mem_model(args, encoder, train_data_for_memory, proto4repaly, args.step2_epochs, seen_relations)
+                    self.train_mem_model(args, encoder, train_data_for_memory, protos4eval , args.step2_epochs, seen_relations)
                 # else:
                 #     #之前类别数据添加到池子里
                 #     retrieval_pool.add_to_retrieve_pool(all_current_embeddings,indss)
@@ -377,29 +386,30 @@ class Manager(object):
                     _, feat, temp_proto = self.select_data(args, encoder, training_data[relation])
                     feat_mem.append(feat)
                     proto_mem.append(temp_proto)
-
+                    proto4repaly[relation]=temp_proto.unsqueeze(dim=0).to(args.device)
                 
                 temp_proto = torch.stack(proto_mem, dim=0)
 
                 protos4eval = []
                 
                 self.lbs = []
-                for i,relation in enumerate(history_relation):
+                for relation in history_relation:
                     if relation not in current_relations:# old relation
-                        old_proto=proto4repaly[i]
+                        old_proto=proto4repaly[relation]
                         protos, _ = self.cab_proto(args, encoder, memorized_samples[relation],old_proto)## TODO:new get old proto by calibration
                         protos4eval.append(protos)
+                        proto4repaly[relation]=protos
                         
                 if protos4eval:
                     
                     protos4eval = torch.cat(protos4eval, dim=0).detach()
                     protos4eval = torch.cat([protos4eval, temp_proto.to(args.device)], dim=0)
-
+                    
                 else:
                     protos4eval = temp_proto.to(args.device)
                     
-                # TODO：protos4eval这里需要提供所有的prototype
-                proto4repaly = protos4eval.clone()
+                # # TODO：protos4eval这里需要提供所有的prototype
+                proto4repaly1 = protos4eval.clone()
 
                 test_data_1 = []
                 for relation in current_relations:

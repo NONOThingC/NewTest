@@ -140,33 +140,36 @@ class RetrievePool:
         ret_vec= np.vstack([self.index.reconstruct(i) for i in indexes ])
         return ret_vec,indexes #K,H
         
-    def retrieval_error_index(self,q,K,class_item):
+    def retrieval_error_index(self,q,K,class_item,retrieved_res):
         # Rejection Sampling
         # q [L,h]
         q=q.view(1,-1).cpu().numpy()
         cur_all_rels=self._get_cur_rel()
-        retrieved_res=[]
+        # retrieved_res=collections.defaultdict(list)
         for rel in cur_all_rels:
             if rel!=class_item:
-                retrieved_res.append(self.batch_query(q,self.retrieve_pool[rel],k=K))# (C-1)*K
+                I=self.batch_query(q,self.retrieve_pool[rel],k=K)[1]
+                
+                retrieved_res[rel].append(I.item())# (C-1)*K
+        # return retrieved_res
         # D N,K->K
-        D,I=list(zip(*retrieved_res))
-        D=np.concatenate(D,axis=0)
-        I=np.concatenate(I,axis=0)
-        I=I.reshape(-1)
-        D=D.reshape(-1)
-        Ik=np.argsort(D)
-        retrieved=set()
-        i=0
-        Ik=Ik.tolist()
-        while i<len(Ik) and len(retrieved)<K:
-            cur=I[Ik[i]].item()
-            if cur not in retrieved:
-                retrieved.add(cur)
-            i+=1
+        # D,I=list(zip(*retrieved_res))
+        # D=np.concatenate(D,axis=0)
+        # I=np.concatenate(I,axis=0)
+        # I=I.reshape(-1)
+        # D=D.reshape(-1)
+        # Ik=np.argsort(D)
+        # retrieved=set()
+        # i=0
+        # Ik=Ik.tolist()
+        # while i<len(Ik) and len(retrieved)<K:
+        #     cur=I[Ik[i]].item()
+        #     if cur not in retrieved:
+        #         retrieved.add(cur)
+        #     i+=1
         # indexes=list(retrieved)
         # ret_vec= np.vstack([self.index.reconstruct(i) for i in indexes ])
-        return list(retrieved) #K,H
+        # return list(retrieved) #K,H
     
     def batch_query(self,query_arr, index, k=1, nprobe = 300, ids=None):
         index.nprobe = nprobe

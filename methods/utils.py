@@ -43,7 +43,7 @@ class Moment:
         encoder.eval()
         datalen = len(datasets)
         if not is_memory:
-            self.features = torch.zeros(datalen, args.feat_dim).cuda()
+            self.features = torch.zeros(datalen, args.feat_dim).to(args.device)
             data_loader = get_data_loader(args, datasets)
             td = tqdm(data_loader)
             lbs = []
@@ -58,8 +58,8 @@ class Moment:
             self.labels = lbs.to(args.device)
         else:
             self.memlen = datalen
-            self.mem_features = torch.zeros(datalen, args.feat_dim).cuda()
-            self.hidden_features = torch.zeros(datalen, args.encoder_output_size).cuda()
+            self.mem_features = torch.zeros(datalen, args.feat_dim).to(args.device)
+            self.hidden_features = torch.zeros(datalen, args.encoder_output_size).to(args.device)
             lbs = []
             data_loader = get_data_loader(args, datasets)
             td = tqdm(data_loader)
