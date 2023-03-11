@@ -141,32 +141,60 @@ class RetrievePool:
         return ret_vec,indexes #K,H
         
     def retrieval_error_index(self,q,K,class_item,retrieved_res):
+        ## Method 1: retreve top 1
+        # K=1
+        # q=q.view(1,-1).cpu().numpy()
+        # cur_all_rels=self._get_cur_rel()
+        # # retrieved_res=collections.defaultdict(list)
+        # rel2id={rel:i for i,rel in enumerate(cur_all_rels)}
+        # id2rel={v:k for k,v in rel2id.items()}
+        # for rel in cur_all_rels:
+        #     if rel!=class_item:
+        #         D,I=self.batch_query(q,self.retrieve_pool[rel],k=K)
+                
+        #         retrieved_res[rel].append(I.item())# (C-1)*K
         # Rejection Sampling
         # q [L,h]
+        ## Method 2: retreve top K
         q=q.view(1,-1).cpu().numpy()
         cur_all_rels=self._get_cur_rel()
         # retrieved_res=collections.defaultdict(list)
+        rel2id={rel:i for i,rel in enumerate(cur_all_rels)}
+        id2rel={v:k for k,v in rel2id.items()}
+        res=[]
         for rel in cur_all_rels:
             if rel!=class_item:
-                I=self.batch_query(q,self.retrieve_pool[rel],k=K)[1]
-                
-                retrieved_res[rel].append(I.item())# (C-1)*K
+                D,I=self.batch_query(q,self.retrieve_pool[rel],k=K)
+                # class matrice
+                cls_mat=rel2id[rel]*np.ones_like(I)
+                res.append((D,I,cls_mat))
+                # retrieved_res[rel].append(I.item())# (C-1)*K
         # return retrieved_res
         # D N,K->K
-        # D,I=list(zip(*retrieved_res))
-        # D=np.concatenate(D,axis=0)
-        # I=np.concatenate(I,axis=0)
-        # I=I.reshape(-1)
-        # D=D.reshape(-1)
-        # Ik=np.argsort(D)
-        # retrieved=set()
-        # i=0
-        # Ik=Ik.tolist()
-        # while i<len(Ik) and len(retrieved)<K:
-        #     cur=I[Ik[i]].item()
-        #     if cur not in retrieved:
-        #         retrieved.add(cur)
-        #     i+=1
+        D,I,cls_mat=list(zip(*res))
+        D=np.concatenate(D,axis=0).reshape(-1)
+        I=np.concatenate(I,axis=0).reshape(-1)
+        cls_mat=np.concatenate(cls_mat,axis=0).reshape(-1)
+        Ik=np.argsort(D)
+        retrieved=collections.defaultdict(set)
+        cl_cnt=len(cur_all_rels)
+        i=0
+        cnt=0
+        Ik=Ik.tolist()
+        while i<len(Ik) and (cnt<K or cl_cnt>0) :
+            j=Ik[i]
+            rel_id=cls_mat[j].item()
+            id=I[j].item()
+            if id not in retrieved[id2rel[rel_id]]:
+                if len(retrieved[id2rel[rel_id]])==0:
+                    cl_cnt-=1
+                retrieved[id2rel[rel_id]].add(id)
+                cnt+=1
+            i+=1
+        retrieved={k:list(v) for k,v in retrieved.items()}
+        for k,v in retrieved.items():
+            retrieved_res[k].extend(list(v))
+        
         # indexes=list(retrieved)
         # ret_vec= np.vstack([self.index.reconstruct(i) for i in indexes ])
         # return list(retrieved) #K,H

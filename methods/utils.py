@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm, trange
 import random
-
+import collections
 class Moment:
     def __init__(self, args) -> None:
         
@@ -71,6 +71,69 @@ class Moment:
                 lbs.append(labels)
             lbs = torch.cat(lbs)
             self.mem_labels = lbs.to(args.device)
+    @torch.no_grad()
+    def init_proto(self, args, encoder, datasets, is_memory=False):
+        # 主要是为了更新self.features，self.mem_features两个东西，即数据集的向量和mem的向量
+        encoder.eval()
+        datalen = len(datasets)
+        self.memlen = datalen
+        self.mem_features = torch.zeros(datalen, args.feat_dim).to(args.device)
+        self.hidden_features = torch.zeros(datalen, args.encoder_output_size).to(args.device)
+        lbs = []
+        data_loader = get_data_loader(args, datasets)
+        td = tqdm(data_loader)
+        for step, batch_data in enumerate(td):
+            labels, tokens, ind = batch_data
+            tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+            hidden, reps = encoder.bert_forward(tokens)
+            self.update_mem(ind, reps.detach(), hidden.detach())
+            lbs.append(labels)
+        lbs = torch.cat(lbs)
+        
+        
+        
+        labels2feat=collections.defaultdict(list)
+        # labels2ind=collections.defaultdict(list)
+        for ind in range(lbs.shape[0]):
+            labels2feat[lbs[ind].item()].append(self.mem_features[ind,:])
+            # labels2ind[self.mem_labels[ind].item()].append(ind)
+        # self.labels2ind=labels2ind
+        labels=[]
+        prototypes=[]
+        for label,proto in labels2feat.items():
+            labels.append(label)
+            if proto:
+                prototypes.append(torch.stack(proto,dim=0).mean(dim=0))#TODO
+        prototypes=F.normalize(torch.stack(prototypes,dim=0),dim=-1,p=2)
+        
+        tmp_labels=torch.tensor(labels)
+        self.proto_labels=tmp_labels.to(args.device)
+        self.protos=prototypes
+        
+        
+    def prototypical_loss(self, hidden, true_labels, is_mem=False, mapping=None):
+        # device = torch.device("cuda") if hidden.is_cuda else torch.device("cpu")
+        # labels=[]
+        # prototypes=[]
+        # for label,inds in self.labels2ind.items():
+        #     labels.append(label)
+        #     if inds:
+        #         prototypes.append(self.mem_features[inds,:].mean(dim=0))#TODO
+        # prototypes=torch.stack(prototypes,dim=0)
+        # labels=torch.tensor(labels).to(device) 
+        
+        trues = true_labels
+        # preds = labels
+        preds= self.proto_labels
+        trues = trues.expand((preds.shape[0], trues.shape[0])).transpose(-1, -2)
+        preds = preds.expand((trues.shape[0], preds.shape[0]))
+        con_labels = (trues == preds).int()
+        hidden=F.normalize(hidden,dim=-1,p=2)
+        # logits_aa = torch.matmul(hidden, torch.transpose(prototypes, -1, -2)) / self.temperature
+        logits_aa = torch.matmul(hidden, torch.transpose(self.protos, -1, -2)) / self.temperature
+        logsoftmax=nn.LogSoftmax(dim=-1)
+        proto_loss=-(logsoftmax(logits_aa)*con_labels/con_labels.shape[0]).sum()
+        return proto_loss
     
     def loss(self, x, labels, is_mem=False, mapping=None):
 

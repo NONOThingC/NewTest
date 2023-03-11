@@ -37,7 +37,7 @@ class Manager(object):
         features = torch.cat(features, dim=0)
 
         proto = torch.mean(features, dim=0, keepdim=True)
-        alpha=0.7
+        alpha=0.2
         proto=alpha*old_proto+(1-alpha)*proto.mean(dim=0, keepdim=True)
         return proto, features
     def get_proto(self, args, encoder, mem_set):
@@ -188,22 +188,22 @@ class Manager(object):
             train_data(data_loader, "init_train_{}".format(epoch_i), is_mem=False)
             
     def train_mem_model(self, args, encoder, mem_data, proto_mem, epochs, seen_relations):
-        history_nums = len(seen_relations) - args.rel_per_task
-        if len(proto_mem)>0:
+        # history_nums = len(seen_relations) - args.rel_per_task
+        # if len(proto_mem)>0:
             
-            proto_mem = F.normalize(proto_mem, p =2, dim=1)
-            dist = dot_dist(proto_mem, proto_mem)
-            dist = dist.to(args.device)
+        #     proto_mem = F.normalize(proto_mem, p =2, dim=1)
+        #     dist = dot_dist(proto_mem, proto_mem)
+        #     dist = dist.to(args.device)
 
         mem_loader = get_data_loader(args, mem_data, shuffle=True)
         encoder.train()
-        temp_rel2id = [self.rel2id[x] for x in seen_relations]
-        map_relid2tempid = {k:v for v,k in enumerate(temp_rel2id)}
-        map_tempid2relid = {k:v for k, v in map_relid2tempid.items()}
+        # temp_rel2id = [self.rel2id[x] for x in seen_relations]
+        # map_relid2tempid = {k:v for v,k in enumerate(temp_rel2id)}
+        # map_tempid2relid = {k:v for k, v in map_relid2tempid.items()}
         optimizer = self.get_optimizer(args, encoder)
         def train_data(data_loader_, name = "", is_mem = False):
-            losses = []
-            kl_losses = []
+            # losses = []
+            # kl_losses = []
             td = tqdm(data_loader_, desc=name)
             for step, batch_data in enumerate(td):
 
@@ -212,56 +212,62 @@ class Manager(object):
                 labels = labels.to(args.device)
                 tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
                 zz, reps = encoder.bert_forward(tokens)
-                hidden = reps
+                # hidden = reps
 
 
-                need_ratio_compute = ind < history_nums * args.num_protos
-                total_need = need_ratio_compute.sum()
+                # need_ratio_compute = ind < history_nums * args.num_protos
+                # total_need = need_ratio_compute.sum()
                 
-                if total_need >0 :
-                    # Knowledge Distillation for Relieve Forgetting
-                    need_ind = ind[need_ratio_compute]
-                    need_labels = labels[need_ratio_compute]
-                    temp_labels = [map_relid2tempid[x.item()] for x in need_labels]
-                    gold_dist = dist[temp_labels]#完全训练之前的
-                    current_proto = self.moment.get_mem_proto()[:history_nums]
-                    this_dist = dot_dist(hidden[need_ratio_compute], current_proto.to(args.device))
-                    loss1 = self.kl_div_loss(gold_dist, this_dist, t=args.kl_temp)
-                    loss1.backward(retain_graph=True)
-                else:
-                    loss1 = 0.0
+                # if total_need >0 :
+                #     # Knowledge Distillation for Relieve Forgetting
+                #     need_ind = ind[need_ratio_compute]
+                #     need_labels = labels[need_ratio_compute]
+                #     temp_labels = [map_relid2tempid[x.item()] for x in need_labels]
+                #     gold_dist = dist[temp_labels]#完全训练之前的
+                #     current_proto = self.moment.get_mem_proto()[:history_nums]
+                #     this_dist = dot_dist(hidden[need_ratio_compute], current_proto.to(args.device))
+                #     loss1 = self.kl_div_loss(gold_dist, this_dist, t=args.kl_temp)
+                #     loss1.backward(retain_graph=True)
+                # else:
+                #     loss1 = 0.0
 
                 #  Contrastive Replay
-                cl_loss = self.moment.loss(reps, labels, is_mem=True, mapping=map_relid2tempid)
-
-                if isinstance(loss1, float):
-                    kl_losses.append(loss1)
-                else:
-                    kl_losses.append(loss1.item())
+                # cl_loss = self.moment.loss(reps, labels, is_mem=True, mapping=map_relid2tempid)
+                cl_loss = self.moment.prototypical_loss(reps, labels, is_mem=True)
+                # if isinstance(loss1, float):
+                #     kl_losses.append(loss1)
+                # else:
+                #     kl_losses.append(loss1.item())
                 loss = cl_loss
-                if isinstance(loss, float):
-                    losses.append(loss)
-                    td.set_postfix(loss = np.array(losses).mean(),  kl_loss = np.array(kl_losses).mean())
-                    # update moemnt
-                    if is_mem:
-                        self.moment.update_mem(ind, reps.detach(), hidden.detach())
-                    else:
-                        self.moment.update(ind, reps.detach())
-                    continue
-                losses.append(loss.item())
-                td.set_postfix(loss = np.array(losses).mean(),  kl_loss = np.array(kl_losses).mean())
+                # if isinstance(loss, float):
+                #     losses.append(loss)
+                #     # td.set_postfix(loss = np.array(losses).mean(),  kl_loss = np.array(kl_losses).mean())
+                #     td.set_postfix(loss = np.array(losses).mean())
+                #     # update moemnt
+                #     if is_mem:
+                #         self.moment.update_mem(ind, reps.detach(), hidden.detach())
+                #     else:
+                #         self.moment.update(ind, reps.detach())
+                #     continue
+                # losses.append(loss.item())
+                # td.set_postfix(loss = np.array(losses).mean(),  kl_loss = np.array(kl_losses).mean())
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(encoder.parameters(), args.max_grad_norm)
                 optimizer.step()
                 
                 # update moemnt
-                if is_mem:
-                    self.moment.update_mem(ind, reps.detach())
-                else:
-                    self.moment.update(ind, reps.detach())
-            print(f"{name} loss is {np.array(losses).mean()}")
+                # if is_mem:
+                #     self.moment.update_mem(ind, reps.detach())
+                # else:
+                #     self.moment.update(ind, reps.detach())
+            # print(f"{name} loss is {np.array(losses).mean()}")
         for epoch_i in range(epochs):
+            self.moment.init_proto(args, encoder, mem_data, is_memory=True)
             train_data(mem_loader, "memory_train_{}".format(epoch_i), is_mem=True)
+            
+            
+            
+            
     def kl_div_loss(self, x1, x2, t=10):
 
         batch_dist = F.softmax(t * x1, dim=1)
@@ -349,11 +355,11 @@ class Manager(object):
                 # repaly
                 if len(proto4repaly)>0:
                     
-                    # for relation in current_relations:
-                    #     memorized_samples[relation], _, _ = self.select_data(args, encoder, training_data[relation])
-                    # 
+                    for relation in current_relations:
+                        memorized_samples[relation], _, _ = self.select_data(args, encoder, training_data[relation])
+                    
                     retrieval_pool.reset_index()
-                    train_data_for_memory = []
+                    
                     # 重建所有index
                     for i,relation in enumerate(history_relation):
                         all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
@@ -363,18 +369,25 @@ class Manager(object):
                     for relation in history_relation:
                         if relation not in current_relations:
                             cur_rel_data=all_data_for_pool[relation]
-                            retrieval_pool.retrieval_error_index(proto4repaly[relation],1,relation,retrival_res)
+                            retrieval_pool.retrieval_error_index(proto4repaly[relation],args.num_protos,relation,retrival_res)
                     #拿到对应的例子
+                    train_data_for_memory = []
                     for relation in history_relation:
                         if relation not in current_relations:
                             cur_rel_data=all_data_for_pool[relation]
                             memorized_samples[relation]=[cur_rel_data[k] for k in retrival_res[relation]]
                             train_data_for_memory += memorized_samples[relation]
-                        #torch.cat(list(proto4repaly.values()),dim=0).to(args.device)
-                        
+                        else:
+                            train_data_for_memory += memorized_samples[relation]
+                    # torch.cat(list(proto4repaly.values()),dim=0).to(args.device)
                     
-                    self.moment.init_moment(args, encoder, train_data_for_memory, is_memory=True)
-                    self.train_mem_model(args, encoder, train_data_for_memory, protos4eval , args.step2_epochs, seen_relations)
+                    # ini version
+                    # train_data_for_memory = []
+                    # for relation in history_relation:
+                    #     train_data_for_memory += memorized_samples[relation]
+                    
+                    # self.moment.init_proto(args, encoder, train_data_for_memory, is_memory=True)
+                    self.train_mem_model(args, encoder, train_data_for_memory, proto4repaly1 , args.step2_epochs, seen_relations)
                 # else:
                 #     #之前类别数据添加到池子里
                 #     retrieval_pool.add_to_retrieve_pool(all_current_embeddings,indss)
@@ -383,7 +396,7 @@ class Manager(object):
                 proto_mem = []
                 for relation in current_relations:
                     # retrieval_pool=self.add_to_retrieve_pool(args, encoder, training_data[relation],retrieval_pool=retrieval_pool)
-                    _, feat, temp_proto = self.select_data(args, encoder, training_data[relation])
+                    memorized_samples[relation], feat, temp_proto = self.select_data(args, encoder, training_data[relation])
                     feat_mem.append(feat)
                     proto_mem.append(temp_proto)
                     proto4repaly[relation]=temp_proto.unsqueeze(dim=0).to(args.device)
@@ -396,7 +409,8 @@ class Manager(object):
                 for relation in history_relation:
                     if relation not in current_relations:# old relation
                         old_proto=proto4repaly[relation]
-                        protos, _ = self.cab_proto(args, encoder, memorized_samples[relation],old_proto)## TODO:new get old proto by calibration
+                        protos, featrues = self.get_proto(args, encoder, memorized_samples[relation])
+                        # protos, _ = self.cab_proto(args, encoder, memorized_samples[relation],old_proto)## TODO:new get old proto by calibration
                         protos4eval.append(protos)
                         proto4repaly[relation]=protos
                         
