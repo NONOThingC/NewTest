@@ -358,28 +358,38 @@ class Manager(object):
                     for relation in current_relations:
                         memorized_samples[relation], _, _ = self.select_data(args, encoder, training_data[relation])
                     
-                    retrieval_pool.reset_index()
                     
-                    # 重建所有index
-                    for i,relation in enumerate(history_relation):
-                        all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
-                        retrieval_pool.add_to_retrieve_pool(all_current_embeddings,class_label=relation,ids=indss) # K*hidden
-                    # 检索对应proto的index
-                    retrival_res=collections.defaultdict(list)
-                    for relation in history_relation:
-                        if relation not in current_relations:
-                            cur_rel_data=all_data_for_pool[relation]
-                            retrieval_pool.retrieval_error_index(proto4repaly[relation],args.num_protos,relation,retrival_res)
-                    #拿到对应的例子
+                    ## retrieve start
+                    # retrieval_pool.reset_index()
+                    # # 重建所有index
+                    # for i,relation in enumerate(history_relation):
+                    #     all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
+                    #     retrieval_pool.add_to_retrieve_pool(all_current_embeddings,class_label=relation,ids=indss) # K*hidden
+                    # # 检索对应proto的index
+                    # retrival_res=collections.defaultdict(list)
+                    # for relation in history_relation:
+                    #     if relation not in current_relations:
+                    #         cur_rel_data=all_data_for_pool[relation]
+                    #         retrieval_pool.retrieval_error_index(proto4repaly[relation],args.num_protos,relation,retrival_res)
+                    # #拿到对应的例子
+                    # train_data_for_memory = []
+                    # for relation in history_relation:
+                    #     if relation not in current_relations:
+                    #         cur_rel_data=all_data_for_pool[relation]
+                    #         memorized_samples[relation]=[cur_rel_data[k] for k in retrival_res[relation]]
+                    #         train_data_for_memory += memorized_samples[relation]
+                    #     else:
+                    #         train_data_for_memory += memorized_samples[relation]
+                    ## retrieve end
+                    
+                    ## random sampling start
                     train_data_for_memory = []
                     for relation in history_relation:
                         if relation not in current_relations:
-                            cur_rel_data=all_data_for_pool[relation]
-                            memorized_samples[relation]=[cur_rel_data[k] for k in retrival_res[relation]]
+                            memorized_samples[relation]=random.sample(all_data_for_pool[relation],k=args.num_protos)
                             train_data_for_memory += memorized_samples[relation]
-                        else:
-                            train_data_for_memory += memorized_samples[relation]
-                    # torch.cat(list(proto4repaly.values()),dim=0).to(args.device)
+                    ## random sampling end
+                    
                     
                     # ini version
                     # train_data_for_memory = []

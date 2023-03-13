@@ -139,7 +139,9 @@ class RetrievePool:
         indexes=list(retrieved)
         ret_vec= np.vstack([self.index.reconstruct(i) for i in indexes ])
         return ret_vec,indexes #K,H
-        
+    
+
+    
     def retrieval_error_index(self,q,K,class_item,retrieved_res):
         ## Method 1: retreve top 1
         # K=1
