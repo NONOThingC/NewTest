@@ -324,7 +324,7 @@ class Manager(object):
         for epoch_i in range(epochs):
             train_data(data_loader, "init_train_{}".format(epoch_i), is_mem=False)
             
-    def train_mem_model(self, args, encoder, mem_data, proto_mem, epochs, seen_relations):
+    def train_proto_mem_model(self, args, encoder, mem_data, proto_mem, epochs, seen_relations):
         # history_nums = len(seen_relations) - args.rel_per_task
         # if len(proto_mem)>0:
             
@@ -567,24 +567,24 @@ class Manager(object):
                         memorized_samples[relation], _, temp_proto = self.select_data(args, encoder, training_data[relation])
                         proto4repaly[relation]=temp_proto.unsqueeze(dim=0).to(args.device)
                     
-                    # ## retrieve start
-                    retrieval_pool.reset_index()
-                    # 重建所有index
-                    for i,relation in enumerate(history_relation):
-                        # if relation not in current_relations:
-                        all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
-                        retrieval_pool.add_to_retrieve_pool(all_current_embeddings,class_label=relation,ids=indss) # K*hidden
-                    # 检索对应proto的index
-                    retrival_res=collections.defaultdict(list)
-                    for relation in history_relation:
-                        # if relation not in current_relations:
-                        retrieval_pool.retrieval_error_index(proto4repaly[relation],args.num_protos,relation,retrival_res)
-                    #拿到对应的例子
-                    train_data_for_memory = []
-                    for relation in history_relation:
-                        cur_rel_data=all_data_for_pool[relation]
-                        memorized_samples[relation]=[cur_rel_data[k] for k in retrival_res[relation]]
-                        train_data_for_memory += memorized_samples[relation]
+                    # # ## retrieve start
+                    # retrieval_pool.reset_index()
+                    # # 重建所有index
+                    # for i,relation in enumerate(history_relation):
+                    #     # if relation not in current_relations:
+                    #     all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
+                    #     retrieval_pool.add_to_retrieve_pool(all_current_embeddings,class_label=relation,ids=indss) # K*hidden
+                    # # 检索对应proto的index
+                    # retrival_res=collections.defaultdict(list)
+                    # for relation in history_relation:
+                    #     # if relation not in current_relations:
+                    #     retrieval_pool.retrieval_error_index(proto4repaly[relation],args.num_protos,relation,retrival_res)
+                    # #拿到对应的例子
+                    # train_data_for_memory = []
+                    # for relation in history_relation:
+                    #     cur_rel_data=all_data_for_pool[relation]
+                    #     memorized_samples[relation]=[cur_rel_data[k] for k in retrival_res[relation]]
+                    #     train_data_for_memory += memorized_samples[relation]
 
                     # train_data_for_memory = []
                     # for relation in history_relation:
@@ -606,12 +606,13 @@ class Manager(object):
                     
                     
                     # ini version
-                    # train_data_for_memory = []
-                    # for relation in history_relation:
-                    #     train_data_for_memory += memorized_samples[relation]
+                    train_data_for_memory = []
+                    for relation in history_relation:
+                        train_data_for_memory += memorized_samples[relation]
                     
+                    # self.moment.init_moment(args, encoder, train_data_for_memory, is_memory=True)
                     self.moment.init_proto(args, encoder, train_data_for_memory, is_memory=True)
-                    self.train_mem_model(args, encoder, train_data_for_memory, proto4repaly1 , args.step2_epochs, seen_relations)
+                    self.train_proto_mem_model(args, encoder, train_data_for_memory, proto4repaly1 , args.step2_epochs, seen_relations)
                     
                     # draw pic before update
                     if d_pic:

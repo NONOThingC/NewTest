@@ -192,3 +192,18 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
     
+class PathDecider:
+    def __init__(self,args) -> None:
+        self.args=args
+        
+    def make_path(self,epoch):
+        args=self.args
+        if args.save_path is None:
+            args.save_path = os.path.join(args.save_dir, args.dataset_name, args.encoder_name, args.model_name)
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
+        args.save_path = os.path.join(args.save_path, str(epoch))
+        if not os.path.exists(args.save_path):
+            os.makedirs(args.save_path)
+        return args.save_path
+    
