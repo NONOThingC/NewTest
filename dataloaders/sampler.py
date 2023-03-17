@@ -49,6 +49,10 @@ class data_sampler(object):
         # record relations
         self.seen_relations = []
         self.history_test_data = {}
+        
+    def __len__(self):
+        return self.task_length
+    
     def set_path(self, args):
         use_marker = ""
         if args.dataname in ['FewRel']:

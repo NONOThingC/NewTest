@@ -172,7 +172,7 @@ class RetrievePool:
                 res.append((D,I,cls_mat))
                 # retrieved_res[rel].append(I.item())# (C-1)*K
         # return retrieved_res
-        # D N,K->K
+        # D (C-1)*K->K
         D,I,cls_mat=list(zip(*res))
         D=np.concatenate(D,axis=0).reshape(-1)
         I=np.concatenate(I,axis=0).reshape(-1)
@@ -183,20 +183,29 @@ class RetrievePool:
         i=0
         cnt=0
         Ik=Ik.tolist()
-        while i<len(Ik) and (cnt<K or cl_cnt>0) :
+        while i<len(Ik) and cl_cnt>0 :
+            j=Ik[i]
+            rel_id=cls_mat[j].item()
+            id=I[j].item()
+            if len(retrieved[id2rel[rel_id]])==0:
+                cl_cnt-=1
+                retrieved[id2rel[rel_id]].add(id)
+                cnt+=1
+            i+=1
+        i=0
+        while i<len(Ik) and cnt<K :
             j=Ik[i]
             rel_id=cls_mat[j].item()
             id=I[j].item()
             if id not in retrieved[id2rel[rel_id]]:
-                if len(retrieved[id2rel[rel_id]])==0:
-                    cl_cnt-=1
                 retrieved[id2rel[rel_id]].add(id)
                 cnt+=1
             i+=1
         retrieved={k:list(v) for k,v in retrieved.items()}
         for k,v in retrieved.items():
             retrieved_res[k].extend(list(v))
-        
+            
+        print(f"retrieved num is: {cnt},k is {K}")
         # indexes=list(retrieved)
         # ret_vec= np.vstack([self.index.reconstruct(i) for i in indexes ])
         # return list(retrieved) #K,H

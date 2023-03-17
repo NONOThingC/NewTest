@@ -76,4 +76,5 @@ class Param:
         # bert-base-uncased weights path
         parser.add_argument("--bert_path", default="/home/v-chengweihu/code/bert-base-uncased", type=str)
         
+        parser.add_argument("--output_path", default="./output", type=str)
         return parser

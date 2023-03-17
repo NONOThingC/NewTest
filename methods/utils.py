@@ -92,45 +92,46 @@ class Moment:
         
         
         
-        labels2feat=collections.defaultdict(list)
-        # labels2ind=collections.defaultdict(list)
+        # labels2feat=collections.defaultdict(list)
+        labels2ind=collections.defaultdict(list)
         for ind in range(lbs.shape[0]):
-            labels2feat[lbs[ind].item()].append(self.mem_features[ind,:])
-            # labels2ind[self.mem_labels[ind].item()].append(ind)
-        # self.labels2ind=labels2ind
-        labels=[]
-        prototypes=[]
-        for label,proto in labels2feat.items():
-            labels.append(label)
-            if proto:
-                prototypes.append(torch.stack(proto,dim=0).mean(dim=0))#TODO
-        prototypes=F.normalize(torch.stack(prototypes,dim=0),dim=-1,p=2)
+            # labels2feat[lbs[ind].item()].append(self.mem_features[ind,:])
+            labels2ind[lbs[ind].item()].append(ind)
+        self.labels2ind=labels2ind
+        # labels=[]
+        # prototypes=[]
+        # for label,proto in labels2feat.items():
+        #     labels.append(label)
+        #     if proto:
+        #         prototypes.append(torch.stack(proto,dim=0).mean(dim=0))#TODO
+        # prototypes=F.normalize(torch.stack(prototypes,dim=0),dim=-1,p=2)
         
-        tmp_labels=torch.tensor(labels)
-        self.proto_labels=tmp_labels.to(args.device)
-        self.protos=prototypes
+        # tmp_labels=torch.tensor(labels)
+        # self.proto_labels=tmp_labels.to(args.device)
+        # self.protos=prototypes
         
         
     def prototypical_loss(self, hidden, true_labels, is_mem=False, mapping=None):
-        # device = torch.device("cuda") if hidden.is_cuda else torch.device("cpu")
-        # labels=[]
-        # prototypes=[]
-        # for label,inds in self.labels2ind.items():
-        #     labels.append(label)
-        #     if inds:
-        #         prototypes.append(self.mem_features[inds,:].mean(dim=0))#TODO
-        # prototypes=torch.stack(prototypes,dim=0)
-        # labels=torch.tensor(labels).to(device) 
-        
+        device = torch.device("cuda") if hidden.is_cuda else torch.device("cpu")
+        labels=[]
+        prototypes=[]
+        with torch.no_grad():
+            for label,inds in self.labels2ind.items():
+                labels.append(label)
+                if inds:
+                    prototypes.append(self.mem_features[inds,:].mean(dim=0))#TODO
+            prototypes=torch.stack(prototypes,dim=0)
+            labels=torch.tensor(labels).to(device)
+
         trues = true_labels
-        # preds = labels
-        preds= self.proto_labels
+        preds = labels
+        # preds= self.proto_labels
         trues = trues.expand((preds.shape[0], trues.shape[0])).transpose(-1, -2)
         preds = preds.expand((trues.shape[0], preds.shape[0]))
         con_labels = (trues == preds).int()
         hidden=F.normalize(hidden,dim=-1,p=2)
-        # logits_aa = torch.matmul(hidden, torch.transpose(prototypes, -1, -2)) / self.temperature
-        logits_aa = torch.matmul(hidden, torch.transpose(self.protos, -1, -2)) / self.temperature
+        logits_aa = torch.matmul(hidden, torch.transpose(prototypes, -1, -2)) / self.temperature
+        # logits_aa = torch.matmul(hidden, torch.transpose(self.protos, -1, -2)) / self.temperature
         logsoftmax=nn.LogSoftmax(dim=-1)
         proto_loss=-(logsoftmax(logits_aa)*con_labels/con_labels.shape[0]).sum()
         return proto_loss
@@ -190,3 +191,4 @@ def setup_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
+    
