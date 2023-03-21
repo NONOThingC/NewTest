@@ -252,6 +252,18 @@ class Manager(object):
         current_feat = torch.from_numpy(current_feat)
         return mem_set, current_feat, current_feat.mean(0)
     
+    def update_mem_embeddings(self, args, encoder, mem_set):
+        
+        data_loader = get_data_loader(args, mem_set, shuffle=False,batch_size=args.batch_size, drop_last=False)
+        encoder.eval()
+        with torch.no_grad():
+            for step, batch_data in enumerate(data_loader):
+                labels, tokens, ind = batch_data
+                tokens=torch.stack([x.to(args.device) for x in tokens],dim=0)
+                _,  reps = encoder.bert_forward(tokens)
+                self.moment.update_mem(ind, reps.detach())
+        
+    
     def get_embedding(self, args, encoder, sample_set):
         data_loader = get_data_loader(args, sample_set, shuffle=False, drop_last=False, batch_size=args.batch_size)
         features = []
@@ -324,7 +336,8 @@ class Manager(object):
         for epoch_i in range(epochs):
             train_data(data_loader, "init_train_{}".format(epoch_i), is_mem=False)
             
-    def train_proto_mem_model(self, args, encoder, mem_data, proto_mem, epochs, seen_relations):
+    
+    def train_proto_mem_model(self, args, encoder, mem_data, training_data, epochs):
         # history_nums = len(seen_relations) - args.rel_per_task
         # if len(proto_mem)>0:
             
@@ -332,7 +345,7 @@ class Manager(object):
         #     dist = dot_dist(proto_mem, proto_mem)
         #     dist = dist.to(args.device)
 
-        mem_loader = get_data_loader(args, mem_data, shuffle=True)
+        mem_loader = get_data_loader(args, training_data, shuffle=True)
         encoder.train()
         # temp_rel2id = [self.rel2id[x] for x in seen_relations]
         # map_relid2tempid = {k:v for v,k in enumerate(temp_rel2id)}
@@ -350,8 +363,6 @@ class Manager(object):
                 tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
                 zz, reps = encoder.bert_forward(tokens)
                 # hidden = reps
-
-
                 # need_ratio_compute = ind < history_nums * args.num_protos
                 # total_need = need_ratio_compute.sum()
                 
@@ -376,27 +387,16 @@ class Manager(object):
                 # else:
                 #     kl_losses.append(loss1.item())
                 loss = cl_loss
-                # if isinstance(loss, float):
-                #     losses.append(loss)
-                #     # td.set_postfix(loss = np.array(losses).mean(),  kl_loss = np.array(kl_losses).mean())
-                #     td.set_postfix(loss = np.array(losses).mean())
-                #     # update moemnt
-                #     if is_mem:
-                #         self.moment.update_mem(ind, reps.detach(), hidden.detach())
-                #     else:
-                #         self.moment.update(ind, reps.detach())
-                #     continue
                 # losses.append(loss.item())
                 # td.set_postfix(loss = np.array(losses).mean(),  kl_loss = np.array(kl_losses).mean())
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(encoder.parameters(), args.max_grad_norm)
                 optimizer.step()
                 
-                # update moemnt
-                # if is_mem:
-                #     self.moment.update_mem(ind, reps.detach())
-                # else:
-                #     self.moment.update(ind, reps.detach())
+            # update moemnt
+            # self.moment.update_mem(ind, reps.detach())
+            self.update_mem_embeddings(args, encoder, mem_data)
+
             # print(f"{name} loss is {np.array(losses).mean()}")
         for epoch_i in range(epochs):
             # self.moment.init_proto(args, encoder, mem_data, is_memory=True)
@@ -534,7 +534,6 @@ class Manager(object):
             all_data_for_pool={}
             for steps, (training_data, valid_data, test_data, current_relations, historic_test_data, seen_relations) in enumerate(sampler):
                 
-                
                 all_data_for_pool.update(copy.deepcopy(training_data)) # for retreval pool update
                 print(current_relations)
                 # Initial
@@ -542,11 +541,11 @@ class Manager(object):
                 for relation in current_relations:
                     history_relation.append(relation)
                     train_data_for_initial += training_data[relation]
-                    
+                
                 if d_pic:
-                    if steps == 0:
+                    if round==len(args.total_round)-1 and steps == 0:
                         tokens_task1 = train_data_for_initial
-                    if steps == len(sampler)-1:#len(sampler)-1
+                    if round==len(args.total_round)-1 and steps == len(sampler)-1:#len(sampler)-1
                         tokens_task2 = train_data_for_initial
                 # train model
                 # no memory. first train with current task
@@ -556,7 +555,7 @@ class Manager(object):
                 # bulid index for all class
                 # draw pic before update
                 if d_pic:
-                    if steps == len(sampler)-1:#len(sampler)-1
+                    if round==len(args.total_round)-1 and steps == len(sampler)-1:#len(sampler)-1
                         flag = False
                         self.tsne_plot(args, encoder, tokens_task1, tokens_task2, flag,draw_all_point=True)
                         self.tsne_plot(args, encoder, tokens_task1, tokens_task2, flag,draw_all_point=False)
@@ -566,26 +565,34 @@ class Manager(object):
                     for relation in current_relations:
                         memorized_samples[relation], _, temp_proto = self.select_data(args, encoder, training_data[relation])
                         proto4repaly[relation]=temp_proto.unsqueeze(dim=0).to(args.device)
-                    
-                    # # ## retrieve start
-                    # retrieval_pool.reset_index()
-                    # # 重建所有index
-                    # for i,relation in enumerate(history_relation):
-                    #     # if relation not in current_relations:
-                    #     all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
-                    #     retrieval_pool.add_to_retrieve_pool(all_current_embeddings,class_label=relation,ids=indss) # K*hidden
-                    # # 检索对应proto的index
-                    # retrival_res=collections.defaultdict(list)
-                    # for relation in history_relation:
-                    #     # if relation not in current_relations:
-                    #     retrieval_pool.retrieval_error_index(proto4repaly[relation],args.num_protos,relation,retrival_res)
-                    # #拿到对应的例子
-                    # train_data_for_memory = []
-                    # for relation in history_relation:
-                    #     cur_rel_data=all_data_for_pool[relation]
-                    #     memorized_samples[relation]=[cur_rel_data[k] for k in retrival_res[relation]]
-                    #     train_data_for_memory += memorized_samples[relation]
-
+                        
+                    for relation in history_relation:
+                        if relation not in current_relations:# old relation
+                            # old_proto=proto4repaly[relation]
+                            protos, _ = self.get_proto(args, encoder, memorized_samples[relation])
+                            # protos, _ = self.cab_proto(args, encoder, memorized_samples[relation],old_proto)## TODO:new get old proto by calibration
+                            proto4repaly[relation]=protos
+                    ## retrieve start
+                    retrieval_pool.reset_index()
+                    # 重建所有index
+                    for i,relation in enumerate(history_relation):
+                        # if relation not in current_relations:
+                        all_current_embeddings,indss,cur_labelss=self.get_embedding( args, encoder, all_data_for_pool[relation])
+                        retrieval_pool.add_to_retrieve_pool(all_current_embeddings,class_label=relation,ids=indss) # K*hidden
+                    # 检索对应proto的index
+                    retrival_res=collections.defaultdict(list)
+                    for relation in history_relation:
+                        # if relation not in current_relations:
+                        retrieval_pool.retrieval_error_index(proto4repaly[relation],args.num_protos,relation,retrival_res)
+                    #拿到对应的例子
+                    train_data_for_memory = []
+                    for relation in history_relation:
+                        cur_rel_data=all_data_for_pool[relation]
+                        train_data_for_memory +=[cur_rel_data[k] for k in retrival_res[relation]]
+        
+                    mem_for_proto=[]
+                    for relation in history_relation:
+                        mem_for_proto += memorized_samples[relation]
                     # train_data_for_memory = []
                     # for relation in history_relation:
                     #     if relation not in current_relations:
@@ -594,7 +601,7 @@ class Manager(object):
                     #         train_data_for_memory += memorized_samples[relation]
                     #     else:
                     #         train_data_for_memory += memorized_samples[relation]
-                    # ## retrieve end
+                    ## retrieve end
                     
                     ## random sampling start
                     # train_data_for_memory = []
@@ -605,18 +612,18 @@ class Manager(object):
                     ## random sampling end
                     
                     
-                    # ini version
-                    train_data_for_memory = []
-                    for relation in history_relation:
-                        train_data_for_memory += memorized_samples[relation]
+                    # # ini version
+                    # train_data_for_memory = []
+                    # for relation in history_relation:
+                    #     train_data_for_memory += memorized_samples[relation]
                     
                     # self.moment.init_moment(args, encoder, train_data_for_memory, is_memory=True)
-                    self.moment.init_proto(args, encoder, train_data_for_memory, is_memory=True)
-                    self.train_proto_mem_model(args, encoder, train_data_for_memory, proto4repaly1 , args.step2_epochs, seen_relations)
+                    self.moment.init_proto(args, encoder,mem_for_proto, is_memory=True)
+                    self.train_proto_mem_model(args, encoder, mem_data=mem_for_proto, training_data=train_data_for_memory,epochs= args.step2_epochs)
                     
                     # draw pic before update
                     if d_pic:
-                        if steps == len(sampler)-1:#len(sampler)-1
+                        if round==len(args.total_round)-1 and steps == len(sampler)-1:#len(sampler)-1
                             flag = True
                             self.tsne_plot(args, encoder, tokens_task1, tokens_task2, flag,draw_all_point=False)
                             self.tsne_plot(args, encoder, tokens_task1, tokens_task2, flag,draw_all_point=True)

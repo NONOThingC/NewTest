@@ -90,8 +90,6 @@ class Moment:
             lbs.append(labels)
         lbs = torch.cat(lbs)
         
-        
-        
         # labels2feat=collections.defaultdict(list)
         labels2ind=collections.defaultdict(list)
         for ind in range(lbs.shape[0]):
