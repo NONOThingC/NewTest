@@ -339,10 +339,11 @@ class RetrievePool:
             embeddings=[]
             cur_labels=[]
             for rel in cur_all_rels:
-                # if self.rel2id[rel]!=labels[ii]:
-                _,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=1)
+                if self.rel2id[rel]!=labels[ii]:
+                    _,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=1)
+                else:
+                    _,I=self.batch_query(-q[ii,:,:],self.retrieve_pool[rel],k=1)
                 id=I[0][0].item()
-                
                 embeddings.append(self.retrieve_pool[rel].reconstruct(id))
                 cur_labels.extend([self.rel2id[rel]])
             embeddings=torch.tensor(np.array(embeddings))
