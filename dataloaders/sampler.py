@@ -40,7 +40,7 @@ class data_sampler(object):
         self.shuffle_index = np.argsort(self.shuffle_index)
 
         # regenerate data
-        self.training_dataset, self.valid_dataset, self.test_dataset = self._read_data(self.args.data_file)
+        self.training_dataset, self.valid_dataset, self.test_dataset,self.all_data = self._read_data(self.args.data_file)
 
         # generate the task number
         self.batch = 0
@@ -108,13 +108,15 @@ class data_sampler(object):
         if os.path.isfile(self.save_data_path):
             with open(self.save_data_path, 'rb') as f:
                 datas = pickle.load(f)
-            train_dataset, val_dataset, test_dataset = datas
-            return train_dataset, val_dataset, test_dataset
+            train_dataset, val_dataset, test_dataset,all_data = datas
+            return train_dataset, val_dataset, test_dataset,all_data
         else:
             data = json.load(open(file, 'r', encoding='utf-8'))
             train_dataset = [[] for i in range(self.args.num_of_relation)]
             val_dataset = [[] for i in range(self.args.num_of_relation)]
             test_dataset = [[] for i in range(self.args.num_of_relation)]
+            all_data=[]
+            cnt=0
             for relation in data.keys():
                 rel_samples = data[relation]
                 if self.seed != None:
@@ -129,6 +131,9 @@ class data_sampler(object):
                                                                     padding='max_length',
                                                                     truncation=True,
                                                                     max_length=self.args.max_length)
+                    tokenized_sample["ids"] = cnt
+                    cnt+=1
+                    all_data.append(tokenized_sample)
                     if self.args.task_name == 'FewRel':
                         if i < self.args.num_of_train:
                             train_dataset[self.rel2id[relation]].append(tokenized_sample)
@@ -146,8 +151,8 @@ class data_sampler(object):
                             if count1 >= 320:
                                 break
             with open(self.save_data_path, 'wb') as f:
-                pickle.dump((train_dataset, val_dataset, test_dataset), f)
-            return train_dataset, val_dataset, test_dataset
+                pickle.dump((train_dataset, val_dataset, test_dataset,all_data), f)
+            return train_dataset, val_dataset, test_dataset,all_data
 
     def _read_relations(self, file):
         id2rel = json.load(open(file, 'r', encoding='utf-8'))

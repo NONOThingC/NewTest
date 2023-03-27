@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm, trange
 import random
 import collections
+import heapq
 class Moment:
     def __init__(self, args) -> None:
         
@@ -42,20 +43,29 @@ class Moment:
         # 主要是为了更新self.features，self.mem_features两个东西，即数据集的向量和mem的向量
         encoder.eval()
         datalen = len(datasets)
+        globalid2id={}
+        cnt=0
         if not is_memory:
-            self.features = torch.zeros(datalen, args.feat_dim).to(args.device)
+            self.features = torch.zeros(datalen, args.feat_dim)
             data_loader = get_data_loader(args, datasets)
             td = tqdm(data_loader)
             lbs = []
             for step, batch_data in enumerate(td):
-
+                id_lists=[]
                 labels, tokens, ind = batch_data
+                ind=ind.tolist() 
                 tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
                 _, reps = encoder.bert_forward(tokens)
-                self.update(ind, reps.detach())
+                reps=reps.cpu()
+                for i in range(len(ind)):
+                    globalid2id[ind[i]]=cnt
+                    id_lists.append(cnt)
+                    cnt+=1
+                id_lists=torch.tensor(id_lists)
+                self.update(id_lists, reps.detach())
                 lbs.append(labels)
             lbs = torch.cat(lbs)
-            self.labels = lbs.to(args.device)
+            self.labels = lbs
         else:
             self.memlen = datalen
             self.mem_features = torch.zeros(datalen, args.feat_dim).to(args.device)
@@ -71,6 +81,7 @@ class Moment:
                 lbs.append(labels)
             lbs = torch.cat(lbs)
             self.mem_labels = lbs.to(args.device)
+        return globalid2id
     @torch.no_grad()
     def init_proto(self, args, encoder, datasets, is_memory=False):
         # 主要是为了更新self.features，self.mem_features两个东西，即数据集的向量和mem的向量
@@ -133,9 +144,25 @@ class Moment:
         logsoftmax=nn.LogSoftmax(dim=-1)
         proto_loss=-(logsoftmax(logits_aa)*con_labels/con_labels.shape[0]).sum()
         return proto_loss
-    
-    def loss(self, x, labels, is_mem=False, mapping=None):
+    def supervised_loss(self, x, labels,retrieve_reps,retrieve_labels,mapping):
+        ct_x,ct_y=retrieve_reps,retrieve_labels
+        dot_product_tempered = torch.einsum("bh,bdh->bd", x, ct_x)/ self.temperature
+        
+        device = torch.device("cuda") if x.is_cuda else torch.device("cpu")
+        # dot_product_tempered = torch.mm(x, ct_x.T) / self.temperature  # n * m
+        # Minus max for numerical stability with exponential. Same done in cross entropy. Epsilon added to avoid log(0)
+        exp_dot_tempered = (
+            torch.exp(dot_product_tempered - torch.max(dot_product_tempered, dim=1, keepdim=True)[0].detach()) + 1e-5
+        )
+        mask_combined = (labels.unsqueeze(1).repeat(1, ct_y.shape[1]) == ct_y).to(device) # n*m
+        cardinality_per_samples = torch.sum(mask_combined, dim=1)
 
+        log_prob = -torch.log(exp_dot_tempered / (torch.sum(exp_dot_tempered, dim=1, keepdim=True)))
+        supervised_contrastive_loss_per_sample = torch.sum(log_prob * mask_combined, dim=1) / cardinality_per_samples
+        supervised_contrastive_loss = torch.mean(supervised_contrastive_loss_per_sample)
+
+        return supervised_contrastive_loss
+    def loss(self, x, labels, is_mem=False, mapping=None):
         if is_mem:
             ct_x = self.mem_features
             ct_y = self.mem_labels
@@ -154,6 +181,8 @@ class Moment:
                 ct_y = self.labels
 
         device = torch.device("cuda") if x.is_cuda else torch.device("cpu")
+        ct_x =ct_x.to(device)
+        ct_y=ct_y.to(device)
         dot_product_tempered = torch.mm(x, ct_x.T) / self.temperature  # n * m
         # Minus max for numerical stability with exponential. Same done in cross entropy. Epsilon added to avoid log(0)
         exp_dot_tempered = (
@@ -205,3 +234,21 @@ class PathDecider:
             os.makedirs(args.save_path)
         return args.save_path
     
+def kthSmallest( matrix, k: int) -> int:
+    n = len(matrix)
+    pq = [(matrix[i,0], i, 0) for i in range(n)]
+    
+    heapq.heapify(pq)
+
+    ret = set()
+    i=0
+    while i < k:
+        num, x, y = heapq.heappop(pq)
+        if (x, y) not in ret:
+            ret.add()
+        if y != n - 1:
+            heapq.heappush(pq, (matrix[x][y + 1], x, y + 1))
+    
+    return heapq.heappop(pq)[0]
+
+
