@@ -7,17 +7,22 @@ from tqdm import tqdm, trange
 import random
 import collections
 import heapq
+
+
 class Moment:
+
     def __init__(self, args) -> None:
-        
+
         self.labels = None
         self.mem_labels = None
         self.memlen = 0
         self.sample_k = 500
-        self.temperature= args.temp
+        self.temperature = args.temp
+
     def get_mem_proto(self):
         c = self._compute_centroids_ind()
         return c
+
     def _compute_centroids_ind(self):
         cinds = []
         for x in self.mem_labels:
@@ -26,62 +31,73 @@ class Moment:
 
         num = len(cinds)
         feats = self.mem_features
-        centroids = torch.zeros((num, feats.size(1)), dtype=torch.float32, device=feats.device)
+        centroids = torch.zeros((num, feats.size(1)),
+                                dtype=torch.float32,
+                                device=feats.device)
         for i, c in enumerate(cinds):
             ind = np.where(self.mem_labels.cpu().numpy() == c)[0]
-            centroids[i, :] = F.normalize(feats[ind, :].mean(dim=0), p=2, dim=0)
+            centroids[i, :] = F.normalize(feats[ind, :].mean(dim=0),
+                                          p=2,
+                                          dim=0)
         return centroids
 
     def update(self, ind, feature, init=False):
         self.features[ind] = feature
+
     def update_mem(self, ind, feature, hidden=None):
         self.mem_features[ind] = feature
         if hidden is not None:
             self.hidden_features[ind] = hidden
+
     @torch.no_grad()
     def init_moment(self, args, encoder, datasets, is_memory=False):
         # 主要是为了更新self.features，self.mem_features两个东西，即数据集的向量和mem的向量
         encoder.eval()
         datalen = len(datasets)
-        globalid2id={}
-        cnt=0
+        globalid2id = {}
+        cnt = 0
         if not is_memory:
             self.features = torch.zeros(datalen, args.feat_dim)
             data_loader = get_data_loader(args, datasets)
             td = tqdm(data_loader)
             lbs = []
             for step, batch_data in enumerate(td):
-                id_lists=[]
+                id_lists = []
                 labels, tokens, ind = batch_data
-                ind=ind.tolist() 
-                tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+                ind = ind.tolist()
+                tokens = torch.stack([x.to(args.device) for x in tokens],
+                                     dim=0)
                 _, reps = encoder.bert_forward(tokens)
-                reps=reps.cpu()
+                reps = reps.cpu()
                 for i in range(len(ind)):
-                    globalid2id[ind[i]]=cnt
+                    globalid2id[ind[i]] = cnt
                     id_lists.append(cnt)
-                    cnt+=1
-                id_lists=torch.tensor(id_lists)
+                    cnt += 1
+                id_lists = torch.tensor(id_lists)
                 self.update(id_lists, reps.detach())
                 lbs.append(labels)
             lbs = torch.cat(lbs)
             self.labels = lbs
         else:
             self.memlen = datalen
-            self.mem_features = torch.zeros(datalen, args.feat_dim).to(args.device)
-            self.hidden_features = torch.zeros(datalen, args.encoder_output_size).to(args.device)
+            self.mem_features = torch.zeros(datalen,
+                                            args.feat_dim).to(args.device)
+            self.hidden_features = torch.zeros(
+                datalen, args.encoder_output_size).to(args.device)
             lbs = []
             data_loader = get_data_loader(args, datasets)
             td = tqdm(data_loader)
             for step, batch_data in enumerate(td):
                 labels, tokens, ind = batch_data
-                tokens = torch.stack([x.to(args.device) for x in tokens], dim=0)
+                tokens = torch.stack([x.to(args.device) for x in tokens],
+                                     dim=0)
                 hidden, reps = encoder.bert_forward(tokens)
                 self.update_mem(ind, reps.detach(), hidden.detach())
                 lbs.append(labels)
             lbs = torch.cat(lbs)
             self.mem_labels = lbs.to(args.device)
         return globalid2id
+
     @torch.no_grad()
     def init_proto(self, args, encoder, datasets, is_memory=False):
         # 主要是为了更新self.features，self.mem_features两个东西，即数据集的向量和mem的向量
@@ -89,7 +105,8 @@ class Moment:
         datalen = len(datasets)
         self.memlen = datalen
         self.mem_features = torch.zeros(datalen, args.feat_dim).to(args.device)
-        self.hidden_features = torch.zeros(datalen, args.encoder_output_size).to(args.device)
+        self.hidden_features = torch.zeros(
+            datalen, args.encoder_output_size).to(args.device)
         lbs = []
         data_loader = get_data_loader(args, datasets)
         td = tqdm(data_loader)
@@ -100,13 +117,13 @@ class Moment:
             self.update_mem(ind, reps.detach(), hidden.detach())
             lbs.append(labels)
         lbs = torch.cat(lbs)
-        
+
         # labels2feat=collections.defaultdict(list)
-        labels2ind=collections.defaultdict(list)
+        labels2ind = collections.defaultdict(list)
         for ind in range(lbs.shape[0]):
             # labels2feat[lbs[ind].item()].append(self.mem_features[ind,:])
             labels2ind[lbs[ind].item()].append(ind)
-        self.labels2ind=labels2ind
+        self.labels2ind = labels2ind
         # labels=[]
         # prototypes=[]
         # for label,proto in labels2feat.items():
@@ -114,61 +131,81 @@ class Moment:
         #     if proto:
         #         prototypes.append(torch.stack(proto,dim=0).mean(dim=0))#TODO
         # prototypes=F.normalize(torch.stack(prototypes,dim=0),dim=-1,p=2)
-        
+
         # tmp_labels=torch.tensor(labels)
         # self.proto_labels=tmp_labels.to(args.device)
         # self.protos=prototypes
-        
-        
-    def prototypical_loss(self, hidden, true_labels, is_mem=False, mapping=None):
-        device = torch.device("cuda") if hidden.is_cuda else torch.device("cpu")
-        labels=[]
-        prototypes=[]
+
+    def prototypical_loss(self,
+                          hidden,
+                          true_labels,
+                          is_mem=False,
+                          mapping=None):
+        device = torch.device("cuda") if hidden.is_cuda else torch.device(
+            "cpu")
+        labels = []
+        prototypes = []
         with torch.no_grad():
-            for label,inds in self.labels2ind.items():
+            for label, inds in self.labels2ind.items():
                 labels.append(label)
                 if inds:
-                    prototypes.append(self.mem_features[inds,:].mean(dim=0))#TODO
-            prototypes=torch.stack(prototypes,dim=0)
-            labels=torch.tensor(labels).to(device)
+                    prototypes.append(
+                        self.mem_features[inds, :].mean(dim=0))  #TODO
+            prototypes = torch.stack(prototypes, dim=0)
+            labels = torch.tensor(labels).to(device)
 
         trues = true_labels
         preds = labels
         # preds= self.proto_labels
-        trues = trues.expand((preds.shape[0], trues.shape[0])).transpose(-1, -2)
+        trues = trues.expand(
+            (preds.shape[0], trues.shape[0])).transpose(-1, -2)
         preds = preds.expand((trues.shape[0], preds.shape[0]))
         con_labels = (trues == preds).int()
-        hidden=F.normalize(hidden,dim=-1,p=2)
-        logits_aa = torch.matmul(hidden, torch.transpose(prototypes, -1, -2)) / self.temperature
+        hidden = F.normalize(hidden, dim=-1, p=2)
+        logits_aa = torch.matmul(hidden, torch.transpose(
+            prototypes, -1, -2)) / self.temperature
         # logits_aa = torch.matmul(hidden, torch.transpose(self.protos, -1, -2)) / self.temperature
-        logsoftmax=nn.LogSoftmax(dim=-1)
-        proto_loss=-(logsoftmax(logits_aa)*con_labels/con_labels.shape[0]).sum()
+        logsoftmax = nn.LogSoftmax(dim=-1)
+        proto_loss = -(logsoftmax(logits_aa) * con_labels /
+                       con_labels.shape[0]).sum()
         return proto_loss
-    def supervised_loss(self, x, labels,retrieve_reps,retrieve_labels,mapping):
-        ct_x,ct_y=retrieve_reps,retrieve_labels
-        dot_product_tempered = torch.einsum("bh,bdh->bd", x, ct_x)/ self.temperature
-        
+
+    def supervised_loss(self, x, labels, retrieve_reps, retrieve_labels,
+                        mapping):
+        ct_x, ct_y = retrieve_reps, retrieve_labels
+        # dot_product_tempered = torch.einsum("bh,bdh->bd", x,
+        #                                     ct_x) / self.temperature
+
         device = torch.device("cuda") if x.is_cuda else torch.device("cpu")
-        # dot_product_tempered = torch.mm(x, ct_x.T) / self.temperature  # n * m
+        dot_product_tempered = torch.mm(x, ct_x.T) / self.temperature  # n * m
         # Minus max for numerical stability with exponential. Same done in cross entropy. Epsilon added to avoid log(0)
-        exp_dot_tempered = (
-            torch.exp(dot_product_tempered - torch.max(dot_product_tempered, dim=1, keepdim=True)[0].detach()) + 1e-5
-        )
-        mask_combined = (labels.unsqueeze(1).repeat(1, ct_y.shape[1]) == ct_y).to(device) # n*m
+        exp_dot_tempered = (torch.exp(dot_product_tempered - torch.max(
+            dot_product_tempered, dim=1, keepdim=True)[0].detach()) + 1e-5)
+        # mask_combined = (labels.unsqueeze(1).repeat(1,
+        #                                     ct_y.shape[1]) == ct_y).to(
+        #                                         device)  # n*m
+        mask_combined = (labels.unsqueeze(1).repeat(1,
+                                                    ct_y.shape[0]) == ct_y).to(
+                                                        device)  # n*m
         cardinality_per_samples = torch.sum(mask_combined, dim=1)
 
-        log_prob = -torch.log(exp_dot_tempered / (torch.sum(exp_dot_tempered, dim=1, keepdim=True)))
-        supervised_contrastive_loss_per_sample = torch.sum(log_prob * mask_combined, dim=1) / cardinality_per_samples
-        supervised_contrastive_loss = torch.mean(supervised_contrastive_loss_per_sample)
+        log_prob = -torch.log(
+            exp_dot_tempered /
+            (torch.sum(exp_dot_tempered, dim=1, keepdim=True)))
+        supervised_contrastive_loss_per_sample = torch.sum(
+            log_prob * mask_combined, dim=1) / cardinality_per_samples
+        supervised_contrastive_loss = torch.mean(
+            supervised_contrastive_loss_per_sample)
 
         return supervised_contrastive_loss
+
     def loss(self, x, labels, is_mem=False, mapping=None):
         if is_mem:
             ct_x = self.mem_features
             ct_y = self.mem_labels
         else:
             if self.sample_k is not None:
-            # sample some instances
+                # sample some instances
                 idx = list(range(len(self.features)))
                 if len(idx) > self.sample_k:
                     sample_id = random.sample(idx, self.sample_k)
@@ -181,24 +218,31 @@ class Moment:
                 ct_y = self.labels
 
         device = torch.device("cuda") if x.is_cuda else torch.device("cpu")
-        ct_x =ct_x.to(device)
-        ct_y=ct_y.to(device)
+        ct_x = ct_x.to(device)
+        ct_y = ct_y.to(device)
         dot_product_tempered = torch.mm(x, ct_x.T) / self.temperature  # n * m
         # Minus max for numerical stability with exponential. Same done in cross entropy. Epsilon added to avoid log(0)
-        exp_dot_tempered = (
-            torch.exp(dot_product_tempered - torch.max(dot_product_tempered, dim=1, keepdim=True)[0].detach()) + 1e-5
-        )
-        mask_combined = (labels.unsqueeze(1).repeat(1, ct_y.shape[0]) == ct_y).to(device) # n*m
+        exp_dot_tempered = (torch.exp(dot_product_tempered - torch.max(
+            dot_product_tempered, dim=1, keepdim=True)[0].detach()) + 1e-5)
+        mask_combined = (labels.unsqueeze(1).repeat(1,
+                                                    ct_y.shape[0]) == ct_y).to(
+                                                        device)  # n*m
         cardinality_per_samples = torch.sum(mask_combined, dim=1)
 
-        log_prob = -torch.log(exp_dot_tempered / (torch.sum(exp_dot_tempered, dim=1, keepdim=True)))
-        supervised_contrastive_loss_per_sample = torch.sum(log_prob * mask_combined, dim=1) / cardinality_per_samples
-        supervised_contrastive_loss = torch.mean(supervised_contrastive_loss_per_sample)
+        log_prob = -torch.log(
+            exp_dot_tempered /
+            (torch.sum(exp_dot_tempered, dim=1, keepdim=True)))
+        supervised_contrastive_loss_per_sample = torch.sum(
+            log_prob * mask_combined, dim=1) / cardinality_per_samples
+        supervised_contrastive_loss = torch.mean(
+            supervised_contrastive_loss_per_sample)
 
         return supervised_contrastive_loss
-    
+
+
 def dot_dist(x1, x2):
     return torch.matmul(x1, x2.t())
+
 
 def osdist(x, c):
     pairwise_distances_squared = torch.sum(x ** 2, dim=1, keepdim=True) + \
@@ -207,48 +251,52 @@ def osdist(x, c):
 
     error_mask = pairwise_distances_squared <= 0.0
 
-    pairwise_distances = pairwise_distances_squared.clamp(min=1e-16)#.sqrt()
+    pairwise_distances = pairwise_distances_squared.clamp(min=1e-16)  #.sqrt()
 
     pairwise_distances = torch.mul(pairwise_distances, ~error_mask)
 
     return pairwise_distances
+
+
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
-    
+
+
 class PathDecider:
-    def __init__(self,args) -> None:
-        self.args=args
-        
-    def make_path(self,epoch):
-        args=self.args
+
+    def __init__(self, args) -> None:
+        self.args = args
+
+    def make_path(self, epoch):
+        args = self.args
         if args.save_path is None:
-            args.save_path = os.path.join(args.save_dir, args.dataset_name, args.encoder_name, args.model_name)
+            args.save_path = os.path.join(args.save_dir, args.dataset_name,
+                                          args.encoder_name, args.model_name)
         if not os.path.exists(args.save_path):
             os.makedirs(args.save_path)
         args.save_path = os.path.join(args.save_path, str(epoch))
         if not os.path.exists(args.save_path):
             os.makedirs(args.save_path)
         return args.save_path
-    
-def kthSmallest( matrix, k: int) -> int:
+
+
+def kthSmallest(matrix, k: int) -> int:
     n = len(matrix)
-    pq = [(matrix[i,0], i, 0) for i in range(n)]
-    
+    pq = [(matrix[i, 0], i, 0) for i in range(n)]
+
     heapq.heapify(pq)
 
     ret = set()
-    i=0
+    i = 0
     while i < k:
         num, x, y = heapq.heappop(pq)
         if (x, y) not in ret:
             ret.add()
         if y != n - 1:
             heapq.heappush(pq, (matrix[x][y + 1], x, y + 1))
-    
+
     return heapq.heappop(pq)[0]
-
-

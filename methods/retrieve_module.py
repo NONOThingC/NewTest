@@ -26,6 +26,15 @@ class RetrievePool:
     def _add_index(self ):
         pass
     
+    def update_index(self,embeddings,ids,class_label):
+        try:
+            ids = np.asarray(ids.astype('int64'))
+            embedding=embedding.astype('float32')
+            embedding=embedding.to("cpu")
+        except:
+            pass
+        self.retrieve_pool[class_label].add_with_ids(embeddings, ids)
+    
     def reset_index(self):
         self.index=None
         self.labels=None
@@ -194,12 +203,12 @@ class RetrievePool:
         # # retrieved_res=collections.defaultdict(list)
         # rel2id={rel:i for i,rel in enumerate(cur_all_rels)}
         # id2rel={v:k for k,v in rel2id.items()}
-        
-        # ret_res=[]
+        # positive_num=10
+        # ret_res=set()
         # for ii in range(q.shape[0]):
         #     cls_mat=[]
         #     res=[]
-        #     ret = set()
+            
         #     for rel in cur_all_rels:
         #         if self.rel2id[rel]!=labels[ii]:
         #             D,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=K-1)# q (1,h) D(1,K-1)
@@ -208,7 +217,11 @@ class RetrievePool:
         #             res.append((D,I))
         #         else:
         #             _,I=self.batch_query(-q[ii,:,:],self.retrieve_pool[rel],k=1)
-        #             ret.add(I[0][0].item())
+        #             for i in range(positive_num):
+        #                 ids=I[0][i].item()
+        #                 if ids!=-1:
+        #                     retrieved[rel].add(ids)
+        #             ret_res.add(I[0][0].item())
         #             # retrieved_res[rel].append(I.item())# (C-1)*K
         #     # return retrieved_res
         #     # D (C-1)*(NR-1)->  NR-1
@@ -220,21 +233,21 @@ class RetrievePool:
             
         #     heapq.heapify(pq)
         #     cnt=0
-        #     while cnt < K-1:
+        #     while len(pq)>0 and cnt < K-1:
         #         num, x, y = heapq.heappop(pq)
         #         id=I[x][y].item()
         #         if id==-1:
         #             continue
-        #         if id not in ret:
-        #             ret.add(id)
+        #         if id not in ret_res:
+        #             ret_res.add(id)
         #             cnt+=1
         #         if y != n - 1:
         #             heapq.heappush(pq, (D[x][y + 1], x, y + 1))
-        #     ret_res.append(list(ret))
-        #     # print(f"retrieved num is: {len(ret)},k is {K}")
-        #     assert len(ret)==K
+        #     # assert len(ret_res)==K
+        # print(f"retrieved num is: {len(ret_res)},k is {K}")
+        # # assert len(ret_res)==K*len(q)
         
-        # return ret_res
+        # return list(ret_res)
         # ## method 3: vector retrieved by class
         # q=q.view(q.shape[0],1,-1).detach().cpu().numpy()
         # labels=labels.cpu().tolist()
@@ -245,6 +258,7 @@ class RetrievePool:
         # id2rel={v:k for k,v in rel2id.items()}
         # total_embeddings=[]
         # total_labels=[]
+        # positive_num=10
         # for ii in range(q.shape[0]):
         #     cls_mat=[]
         #     res=[]
@@ -253,14 +267,17 @@ class RetrievePool:
             
         #     for rel in cur_all_rels:
         #         if self.rel2id[rel]!=labels[ii]:
-        #             D,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=K-1)# q (1,h) D(1,K-1)
+        #             D,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=K-positive_num)# q (1,h) D(1,K-1)
         #             # class matrice
         #             cls_mat.append(rel2id[rel])
         #             res.append((D,I))
         #         else:
-        #             _,I=self.batch_query(-q[ii,:,:],self.retrieve_pool[rel],k=1)
+        #             _,I=self.batch_query(-q[ii,:,:],self.retrieve_pool[rel],k=positive_num)
         #             # ret.add(I[0][0].item())
-        #             retrieved[rel].add(I[0][0].item())
+        #             for i in range(positive_num):
+        #                 ids=I[0][i].item()
+        #                 if ids!=-1:
+        #                     retrieved[rel].add(ids)
         #             # retrieved_res[rel].append(I.item())# (C-1)*K
         #     # return retrieved_res
         #     # D (C-1)*(NR-1)->  NR-1
@@ -296,30 +313,91 @@ class RetrievePool:
         # total_labels=torch.tensor(total_labels)
         # total_embeddings=torch.stack(total_embeddings,dim=0)
         # return total_embeddings,total_labels
-        ## method 4: vector retrieved by every class
-        q=q.view(q.shape[0],1,-1).detach().cpu().numpy()
+        # ## method 4: vector retrieved by every class
         # q=q.view(q.shape[0],1,-1).detach().cpu().numpy()
+        # # q=q.view(q.shape[0],1,-1).detach().cpu().numpy()
+        # labels=labels.cpu().tolist()
+        # cur_all_rels=self._get_cur_rel()
+        # # retrieved_res=collections.defaultdict(list)
+        # rel2id={rel:i for i,rel in enumerate(cur_all_rels)}
+        # id2rel={v:k for k,v in rel2id.items()}
+        # total_embeddings=[]
+        # total_labels=[]
+        # for ii in range(q.shape[0]):
+        #     embeddings=[]
+        #     cur_labels=[]
+        #     for rel in cur_all_rels:
+        #         # if self.rel2id[rel]!=labels[ii]:
+        #         _,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=1)
+        #         id=I[0][0].item()
+        #         embeddings.append(self.retrieve_pool[rel].reconstruct(id))
+        #         cur_labels.extend([self.rel2id[rel]])
+        #     embeddings=torch.tensor(np.array(embeddings))
+        #     total_embeddings.append(embeddings)
+        #     total_labels.append(cur_labels)
+        # total_labels=torch.tensor(total_labels)
+        # total_embeddings=torch.stack(total_embeddings,dim=0)
+        # return total_embeddings,total_labels
+        ## method 5: vector retrieved by all class
+        q=q.view(q.shape[0],1,-1).detach().cpu().numpy()
         labels=labels.cpu().tolist()
         cur_all_rels=self._get_cur_rel()
+        
         # retrieved_res=collections.defaultdict(list)
         rel2id={rel:i for i,rel in enumerate(cur_all_rels)}
         id2rel={v:k for k,v in rel2id.items()}
         total_embeddings=[]
         total_labels=[]
+        positive_num=K//4
+        retrieved=collections.defaultdict(set)
         for ii in range(q.shape[0]):
-            embeddings=[]
-            cur_labels=[]
+            cls_mat=[]
+            res=[]
             for rel in cur_all_rels:
-                # if self.rel2id[rel]!=labels[ii]:
-                _,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=1)
-                id=I[0][0].item()
-                embeddings.append(self.retrieve_pool[rel].reconstruct(id))
-                cur_labels.extend([self.rel2id[rel]])
-            embeddings=torch.tensor(np.array(embeddings))
-            total_embeddings.append(embeddings)
-            total_labels.append(cur_labels)
+                if self.rel2id[rel]!=labels[ii]:
+                    D,I=self.batch_query(q[ii,:,:],self.retrieve_pool[rel],k=K-positive_num)# q (1,h) D(1,K-1)
+                    # class matrice
+                    cls_mat.append(rel2id[rel])
+                    res.append((D,I))
+                else:
+                    _,I=self.batch_query(-q[ii,:,:],self.retrieve_pool[rel],k=positive_num)
+                    # ret.add(I[0][0].item())
+                    for i in range(positive_num):
+                        ids=I[0][i].item()
+                        if ids!=-1:
+                            retrieved[rel].add(ids)
+                    # retrieved_res[rel].append(I.item())# (C-1)*K
+            # return retrieved_res
+            # D (C-1)*(NR-1)->  NR-1
+            D,I=list(zip(*res)) # D (C-1)*(NR-1)->  NR-1
+            D=np.concatenate(D,axis=0)
+            I=np.concatenate(I,axis=0)
+            m,n = len(D),len(D[0])
+            pq = [(D[i][0], i, 0) for i in range(m)]
+            
+            heapq.heapify(pq)
+            
+            cnt=0
+            while len(pq)>0 and cnt < K-positive_num:
+                _, x, y = heapq.heappop(pq)
+                id=I[x][y].item()
+                if id==-1:
+                    continue
+                rel_id=cls_mat[x]
+                if id not in retrieved[id2rel[rel_id]]:
+                    retrieved[id2rel[rel_id]].add(id)
+                    cnt+=1
+                if y != n - 1:
+                    heapq.heappush(pq, (D[x][y + 1], x, y + 1))
+            
+            
+            
+        for rel,ids in retrieved.items():
+            total_labels.extend([self.rel2id[rel]]*len(ids))
+            total_embeddings.extend([self.retrieve_pool[rel].reconstruct(id) for id in ids])
+        print(f"retrieved num is: {len(total_labels)},k is {K},C is {len(cur_all_rels)},positive num is {positive_num}")
         total_labels=torch.tensor(total_labels)
-        total_embeddings=torch.stack(total_embeddings,dim=0)
+        total_embeddings=torch.tensor(np.array(total_embeddings))
         return total_embeddings,total_labels
     
     def retrieval_in_batch_random(self,q,K,labels):

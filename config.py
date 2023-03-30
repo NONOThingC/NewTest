@@ -27,7 +27,7 @@ class Param:
         parser.add_argument("--device", default="cuda", type=str)
 
         ###############################   training ################################################
-        parser.add_argument("--batch_size", default=40, type=int)
+        parser.add_argument("--batch_size", default=16, type=int)
 
         parser.add_argument("--learning_rate", default=5e-6, type=float)
         
