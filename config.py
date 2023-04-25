@@ -19,6 +19,8 @@ class Param:
         parser.add_argument("--dataname", default='TACRED', type=str, help="Use TACRED or FewRel datasets.")
 
         parser.add_argument("--task_name", default='TACRED', type=str)
+        
+        parser.add_argument("--exp_name", default='retrieve_topk', type=str)
 
         parser.add_argument("--max_length", default=256, type=int)
 
@@ -46,6 +48,7 @@ class Param:
         # Temperature parameter in CL and CR
         parser.add_argument("--temp", default=0.1, type=float)
 
+        parser.add_argument("--retrieve_random_ratio", default=0, type=float)
         # The projection head outputs dimensions
         parser.add_argument("--feat_dim", default=64, type=int)
 
@@ -54,11 +57,12 @@ class Param:
 
         parser.add_argument("--num_workers", default=0, type=int)
 
+        parser.add_argument("--draw_scatter", default=0, type=int)
         # epoch1
-        parser.add_argument("--step1_epochs", default=10, type=int) 
+        parser.add_argument("--step1_epochs", default=1, type=int) 
 
         # epoch2
-        parser.add_argument("--step2_epochs", default=10, type=int) 
+        parser.add_argument("--step2_epochs", default=1, type=int) 
 
         parser.add_argument("--seed", default=2021, type=int) 
 
@@ -76,4 +80,8 @@ class Param:
         parser.add_argument("--bert_path", default="/home/v-chengweihu/code/bert-base-uncased", type=str)
         
         parser.add_argument("--output_path", default="./output", type=str)
+        
+        parser.add_argument("--change_query", default=0, type=int)
+        
+        parser.add_argument("--must_every_class", default=1, type=int)
         return parser

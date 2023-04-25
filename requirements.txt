@@ -1,7 +1,8 @@
-tqdm==4.47.0
-numpy==1.19.5
-PyYAML==5.3.1
-scikit-learn==0.23.1
-scipy==1.5.0
-transformers==4.12.5
-faiss-gpu==1.7.2
+faiss_gpu==1.7.2
+matplotlib==3.3.1
+numpy==1.21.0
+scikit_learn==1.2.2
+tqdm==4.61.1
+transformers==4.2.1
+tensorboard==2.3.0
+protobuf==3.20.0

@@ -2,6 +2,8 @@ import torch
 from config import Param
 from methods.utils import setup_seed
 from methods.manager import Manager
+
+
 def run(args):
     setup_seed(args.seed)
     print("hyper-parameter configurations:")
@@ -9,6 +11,7 @@ def run(args):
     
     manager = Manager(args)
     manager.train(args)
+    manager.SW.close()
 
 
 if __name__ == '__main__':
