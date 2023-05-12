@@ -1,13 +1,5 @@
 # CRL
-Implementation of the research paper [Consistent Representation Learning for Continual Relation Extraction](https://arxiv.org/abs/2203.02721) (Findings of ACL 2022)
-
-## Framwork of consistent representation learning
-
-Memory Replay Architecture
-
-<div align="center">
-<img src=figs/crl.png width=80% />
-</div>
+Implementation of continual learning research.
 
 ## Dependencies
 
@@ -27,17 +19,52 @@ Pre-trained BERT weights:
 
 > python run_continual.py --dataname FewRel
 
-## Citation
-Please cite our paper if you find our work useful for your research:
+### some example for running:
+```
+job`s:
+- name: $EXP_NAME-TOTAL_RANDOM
+  sku: G1
+  command:
+  - python -u run_continual.py --output_path $$AMLT_OUTPUT_DIR --exp_name $EXP_NAME --bert_path bert-base-uncased --num_protos 20 --step1_epochs 10 --step2_epochs 10 --total_round 5 --retrieve_random_ratio 1 --change_query 0 --must_every_class 0
+- name: $EXP_NAME-retrieve_topk
+  sku: G1
+  command:
+  - python -u run_continual.py --output_path $$AMLT_OUTPUT_DIR --exp_name $EXP_NAME --bert_path bert-base-uncased --num_protos 20 --step1_epochs 10 --step2_epochs 10 --total_round 5 --retrieve_random_ratio 0 --change_query 0 --must_every_class 0
+- name: $EXP_NAME-retrieve_topk-high_lr
+  sku: G1
+  command:
+  - python -u run_continual.py --output_path $$AMLT_OUTPUT_DIR --exp_name $EXP_NAME --bert_path bert-base-uncased --num_protos 20 --step1_epochs 10 --step2_epochs 10 --total_round 5 --retrieve_random_ratio 0 --change_query 0 --must_every_class 0 --learning_rate 2e-5
+- name: $EXP_NAME-0.5random-0.5topk
+  sku: G1
+  command:
+  - python -u run_continual.py --output_path $$AMLT_OUTPUT_DIR --exp_name $EXP_NAME --bert_path bert-base-uncased --num_protos 20 --step1_epochs 10 --step2_epochs 10 --total_round 5 --retrieve_random_ratio 0.5 --change_query 0 --must_every_class 0 
+- name: $EXP_NAME-retrieve_every_class-high_lr
+  sku: G1
+  command:
+  - python -u run_continual.py --output_path $$AMLT_OUTPUT_DIR --exp_name $EXP_NAME --bert_path bert-base-uncased --num_protos 20 --step1_epochs 10 --step2_epochs 10 --total_round 5 --retrieve_random_ratio 0 --change_query 0 --learning_rate 2e-5 --must_every_class 1
+- name: $EXP_NAME-retrieve_every_class
+  sku: G1
+  command:
+  - python -u run_continual.py --output_path $$AMLT_OUTPUT_DIR --exp_name $EXP_NAME --bert_path bert-base-uncased --num_protos 20 --step1_epochs 10 --step2_epochs 10 --total_round 5 --retrieve_random_ratio 0 --change_query 0 --must_every_class 1
+```
 
+### Explanation of some parameters:
 ```
-@misc{zhao2022consistent,
-      title={Consistent Representation Learning for Continual Relation Extraction}, 
-      author={Kang Zhao and Hua Xu and Jiangong Yang and Kai Gao},
-      year={2022},
-      eprint={2203.02721},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL}
-}
+--output_path: output path 
+--exp_name: experiment name 
+--bert_path: bert path from above link
+--num_protos: number of save for each class
+--step1_epochs: epoch of new data training 
+--step2_epochs: epoch of replaying
+--total_round: Number of repetitions, this will change task order
+--retrieve_random_ratio: in retrieval, ratio of random. If set to 1, then random will be done.
+--change_query: change query every time.
+--must_every_class: If set to 1, then retrieve from every class instead of retrieving by score.
 ```
+
+
+### Some other version:
+
+Statistic memory Version:
+
 
