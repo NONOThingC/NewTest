@@ -65,6 +65,11 @@ job`s:
 
 ### Some other version:
 
-Statistic memory Version:
+Statistic Memory Version:
+tag is: separate prototype and training data
+url is: https://github.com/NONOThingC/NewTest/tree/7b1e9a8aff26fcb6bc67c70202cb58e47d6700ec
 
+Prototypical Version:
+tag is: prototypical training
+url is: https://github.com/NONOThingC/NewTest/commit/9210dd35fa326be7309d4d03aaecec75b3a8f6c7
 
