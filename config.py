@@ -83,5 +83,5 @@ class Param:
         
         parser.add_argument("--change_query", default=0, type=int)
         
-        parser.add_argument("--must_every_class", default=1, type=int)
+        parser.add_argument("--must_every_class", default=0, type=int)
         return parser

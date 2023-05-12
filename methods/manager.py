@@ -629,7 +629,132 @@ class Manager(object):
     #             # else:
     #             #     self.moment.update(ind, reps.detach())
     #             print(f"{name} loss is {loss}")
+    def train_stat_mem_model(self,
+                                    args,
+                                    encoder,
+                                    mem_data,
+                                    retrieval_pool,
+                                    epochs,
+                                    seen_relations,
+                                    proto_mem=None,round=0,task_num=0,pre_step=None):
+        # history_nums = len(seen_relations) - args.rel_per_task
+        # if len(proto_mem)>0:
+        #     proto_mem = F.normalize(proto_mem, p =2, dim=1)
+        #     dist = dot_dist(proto_mem, proto_mem)
+        #     dist = dist.to(args.device)
 
+        mem_loader = get_data_loader(args, mem_data, shuffle=True)
+        encoder.train()
+        temp_rel2id = [self.rel2id[x] for x in seen_relations]
+        map_relid2tempid = {k: v for v, k in enumerate(temp_rel2id)}
+        map_tempid2relid = {k: v for k, v in map_relid2tempid.items()}
+        optimizer = self.get_optimizer(args, encoder)
+        
+        epoch_grad_list = collections.defaultdict(list)
+        if round==0:
+            record_grad=True
+        else:
+            record_grad=False
+        for epoch_i in range(epochs):
+            # losses = []
+            # kl_losses = []
+            grad_list = []
+            if round==0:
+                encoder.reset_grad_recoder()
+            # def print_grad(grad):
+            #     grad_list.append(grad.cpu())
+            name="memory_train_{}".format(epoch_i)
+            td = tqdm(mem_loader, desc=name)
+            for step, batch_data in enumerate(td):
+                optimizer.zero_grad()
+                encoder.train()
+                labels, tokens, ind = batch_data
+                labels = labels.to(args.device)
+                tokens = torch.stack([x.to(args.device) for x in tokens],
+                                        dim=0)
+                
+                zz, reps = encoder.bert_forward(tokens,record_grad=record_grad)
+
+
+                # need_ratio_compute = ind < history_nums * args.num_protos
+                # total_need = need_ratio_compute.sum()
+
+                # if total_need >0 :
+                #     # Knowledge Distillation for Relieve Forgetting
+                #     need_ind = ind[need_ratio_compute]
+                #     need_labels = labels[need_ratio_compute]
+                #     temp_labels = [map_relid2tempid[x.item()] for x in need_labels]
+                #     gold_dist = dist[temp_labels]
+                #     current_proto = self.moment.get_mem_proto()[:history_nums]
+                #     this_dist = dot_dist(hidden[need_ratio_compute], current_proto.to(args.device))
+                #     loss1 = self.kl_div_loss(gold_dist, this_dist, t=args.kl_temp)
+                #     loss1.backward(retain_graph=True)
+                # else:
+                #     loss1 = 0.0
+
+                #  Contrastive Replay
+                retrieve_reps=self.moment.mem_features
+                retrieve_labels=self.moment.mem_labels
+                cl_loss = self.moment.supervised_loss(reps,
+                                                        labels,
+                                                        retrieve_reps,
+                                                        retrieve_labels,
+                                                        mapping=map_relid2tempid)
+                # if isinstance(loss1, float):
+                #     kl_losses.append(loss1)
+                # else:
+                #     kl_losses.append(loss1.item())
+                loss = cl_loss
+                loss.backward()
+                if isinstance(loss, float):
+                    # update moment
+                    self.moment.update_mem(ind, reps.detach())
+                    
+                    
+                if pre_step is not None:
+                    self.SW.add_scalar(f"Round{round}/Contrastive Loss",loss,pre_step)
+                    pre_step+=1
+                # torch.nn.utils.clip_grad_norm_(encoder.parameters(),
+                #                                 args.max_grad_norm)
+                optimizer.step()
+                del retrieve_reps
+                del retrieve_labels
+                # update moemnt
+                # if is_mem:
+                #     self.moment.update_mem(ind, reps.detach())
+                # else:
+                #     self.moment.update(ind, reps.detach())
+                print(f"{name} loss is {loss}")
+            if round==0:#for each epoch,record res
+                # epoch_grad_list[epoch_i]=torch.stack(grad_list)
+                for key in encoder.grad_all.keys():
+                    grad=torch.cat(encoder.grad_all[key])
+                    epoch_grad_list[key].append(grad.mean().item())
+                    epoch_grad_list[key+"_abs"].append(torch.abs(grad).mean().item())
+                    # epoch_grad_list[key+"_norm"].append(grad_x.mean().item())
+                
+                # epoch_grad_list[epoch_i]={key:np.average(encoder.grad_all[key]) for key in encoder.grad_all.keys()}
+                encoder.reset_grad_recoder()
+                
+        if round==0:
+            
+            grad_path=os.path.join(args.output_path,f"grad_path_{args.exp_name}")
+            os.makedirs(grad_path,exist_ok=True)
+            with open( os.path.join(grad_path,f"grad_list_{round}_{task_num}.pkl"),"wb" ) as f:
+                pickle.dump(epoch_grad_list,f)
+            print(f"epoch_grad_list is:")
+            for k,v in epoch_grad_list.items():
+                print(f"key:{k},value:{v}")
+                output_dict={
+                    k+"_average":np.average(v),
+                    k+"_start":v[0],
+                    k+"_end":v[-1],
+                }
+                self.SW.add_scalar(f"Round{round}/Grad Plot/{k}_average",np.average(v),task_num)
+                self.SW.add_scalar(f"Round{round}/Grad Plot/{k}_start",v[0],task_num)
+                self.SW.add_scalar(f"Round{round}/Grad Plot/{k}_end",v[-1],task_num)
+                # self.SW.add_scalars(f"Round{round}/Grad Plot-total",output_dict,task_num)
+        return pre_step
     def train_retrieval_mem_model(self,
                                   args,
                                   encoder,
@@ -696,7 +821,7 @@ class Manager(object):
                 # no grad method start
                 with torch.no_grad():
                     retrieve_reps, retrieve_labels = retrieval_pool.retrieval_in_batch(
-                        q=reps, K=len(seen_relations)*args.num_protos, labels=labels,random_ratio=args.retrieve_random_ratio,must_every_class=args.must_every_class)  # B,NR
+                        q=reps, K=len(seen_relations)*args.num_protos//args.batch_size, labels=labels,random_ratio=args.retrieve_random_ratio,must_every_class=args.must_every_class)  # B,NR
                     # retrieve_reps, retrieve_labels = retrieval_pool.retrieval_in_batch_random(
                     #     q=reps, K=len(seen_relations), labels=labels)  # B,NR
                     retrieve_reps = retrieve_reps.detach().to(args.device)

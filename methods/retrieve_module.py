@@ -450,15 +450,15 @@ class RetrievePool:
                     x, y = 0, 0
                     while cnt < close_retrieve - pos_num:
                         id = I[x][y].item()
-                        rel_id = cls_mat[x]
-                        x += 1
-                        if id == -1:
-                            continue
                         
-                        if id not in retrieved[id2rel[rel_id]]:
-                            retrieved[id2rel[rel_id]].add(id)
-                            cnt += 1
-                            close_cnt += 1
+                        if id != -1:
+                            rel_id = cls_mat[x]
+                            if id not in retrieved[id2rel[rel_id]]:
+                                retrieved[id2rel[rel_id]].add(id)
+                                cnt += 1
+                                close_cnt += 1
+                        x += 1
+                        
                         if x > m - 1:
                             x = 0
                             y = y + 1
@@ -497,7 +497,7 @@ class RetrievePool:
         random_retrieved = list(random_retrieved)
         if len(random_retrieved) > 0:
             random_indexes = random.sample(random_retrieved,
-                                           k=K * q.shape[0] - close_cnt)
+                                           k=min(K * q.shape[0] - close_cnt,len(random_retrieved)))
         else:
             random_indexes = []
 
